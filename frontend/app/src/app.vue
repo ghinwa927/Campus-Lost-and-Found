@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue';
-import type { CampusItem, ActiveTab, ItemStatus, ItemType } from '../src/types';
+import type { CampusItem, ActiveTab, ItemStatus, ItemType } from './types';
 import {
   INITIAL_ITEMS,
   INITIAL_CATEGORIES,
   INITIAL_BUILDINGS,
   INITIAL_FACULTIES,
   INITIAL_TIMEFRAMES
-} from '../src/data/mockData';
+} from './data/mockData';
 
 // Active Tab State (dashboard = Home Page)
 const activeTab = ref<ActiveTab>('dashboard');
@@ -408,6 +408,7 @@ const handleAddReport = () => {
     reporterName: reportForm.reporterName.trim(),
     reporterPhone: reportForm.reporterPhone.trim(),
     reporterEmail: reportForm.reporterEmail.trim(),
+    reporterContact: reportForm.reporterEmail.trim(),
     status: 'ACTIVE',
     securityPost: `${reportForm.building} Security Post`
   };
@@ -452,7 +453,7 @@ const loadMore = () => {
       <button @click="statusChangeMessage = null" class="text-slate-400 hover:text-white font-bold ml-auto text-xs shrink-0">✕</button>
     </div>
 
-    <!-- Top Navigation Header -->
+    <!-- Top Navigation Header (No hardcoded login name) -->
     <header class="sticky top-0 z-30 bg-white border-b border-slate-200/80 px-4 sm:px-6 py-2.5 transition-all">
       <div class="max-w-7xl mx-auto flex items-center justify-between gap-3">
         <!-- Left Logo & Mobile Drawer Toggle -->
@@ -508,7 +509,7 @@ const loadMore = () => {
           </div>
         </div>
 
-        <!-- Right Header Actions -->
+        <!-- Right Header Actions (Clean, no customer login) -->
         <div class="flex items-center gap-2 sm:gap-3">
           <!-- Notification Bell -->
           <div class="relative">
@@ -564,7 +565,7 @@ const loadMore = () => {
 
     <!-- Main Workspace -->
     <div class="flex-1 max-w-7xl w-full mx-auto flex">
-      <!-- Sidebar Navigation -->
+      <!-- Sidebar Navigation (Home Page instead of Dashboard) -->
       <aside class="hidden lg:block w-60 shrink-0 border-r border-slate-200/80 bg-[#f3f4f6]/70 min-h-[calc(100vh-53px)]">
         <div class="p-4 flex flex-col justify-between h-full">
           <div class="space-y-1">
@@ -680,7 +681,7 @@ const loadMore = () => {
             </button>
           </div>
 
-          <!-- Keyword Search Bar -->
+          <!-- Keyword Search Bar with Validation Message -->
           <div class="space-y-1">
             <div class="relative">
               <svg class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -827,7 +828,7 @@ const loadMore = () => {
             </button>
           </div>
 
-          <!-- Items Grid -->
+          <!-- Items Grid (3 Columns) -->
           <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             <div
               v-for="item in displayedItems"
@@ -963,7 +964,7 @@ const loadMore = () => {
           </div>
         </div>
 
-        <!-- TAB 2: MY ITEMS -->
+        <!-- TAB 2: MY ITEMS (WITH PAGINATION OF 6 & DIRECT LINK) -->
         <div v-if="activeTab === 'my-items'" class="space-y-6">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
             <div>
@@ -972,6 +973,7 @@ const loadMore = () => {
             </div>
             
             <div class="flex items-center gap-2 flex-wrap">
+              <!-- Link to jump to Home Page -->
               <button
                 @click="activeTab = 'dashboard'"
                 class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-colors border border-slate-200"
@@ -993,6 +995,7 @@ const loadMore = () => {
 
           <!-- My Items Filter & Search Bar -->
           <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
+            <!-- Filter Tabs -->
             <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
               <button
                 @click="myItemsFilterType = 'ALL'; myItemsCurrentPage = 1"
@@ -1014,6 +1017,7 @@ const loadMore = () => {
               </button>
             </div>
 
+            <!-- Quick Search -->
             <div class="w-full sm:w-64 relative">
               <input
                 type="text"
@@ -1054,6 +1058,7 @@ const loadMore = () => {
                   </div>
                 </div>
 
+                <!-- Reporter Contact Badge -->
                 <div class="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-600 space-y-1">
                   <p class="font-semibold text-slate-800">Contact Person:</p>
                   <p v-if="item.reporterName">👤 {{ item.reporterName }}</p>
@@ -1061,6 +1066,7 @@ const loadMore = () => {
                   <p v-if="item.reporterEmail">✉️ {{ item.reporterEmail }}</p>
                 </div>
 
+                <!-- QUICK RESOLUTION ACTIONS FOR MY ITEMS -->
                 <div class="mt-3 pt-2 border-t border-slate-100">
                   <template v-if="item.type === 'LOST'">
                     <button
@@ -1112,7 +1118,7 @@ const loadMore = () => {
             </div>
           </div>
 
-          <!-- Pagination Bar -->
+          <!-- Pagination Bar (6 items per page) -->
           <div v-if="myItemsTotalPages > 1" class="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200">
             <span class="text-xs font-medium text-slate-500">
               Page {{ myItemsCurrentPage }} of {{ myItemsTotalPages }} (Showing {{ myItemsPaginated.length }} of {{ myItemsList.length }} items)
@@ -1200,7 +1206,7 @@ const loadMore = () => {
       </main>
     </div>
 
-    <!-- ITEM DETAIL MODAL -->
+    <!-- ITEM DETAIL MODAL (WITH DEDICATED PERSON INFORMATION / CONTACT SECTION) -->
     <div v-if="selectedItemDetail" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
       <div class="bg-white rounded-3xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 relative overflow-hidden">
         <div class="relative h-60 w-full bg-slate-900">
@@ -1263,11 +1269,13 @@ const loadMore = () => {
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+              <!-- Name -->
               <div class="bg-white p-2.5 rounded-xl border border-blue-100">
                 <span class="text-[10px] text-slate-400 font-bold block uppercase">Name</span>
                 <span class="font-semibold text-slate-900 block mt-0.5">{{ selectedItemDetail.reporterName || 'Alex Rivera' }}</span>
               </div>
 
+              <!-- Phone -->
               <div class="bg-white p-2.5 rounded-xl border border-blue-100">
                 <span class="text-[10px] text-slate-400 font-bold block uppercase">Phone</span>
                 <a :href="'tel:' + (selectedItemDetail.reporterPhone || '+1 (555) 234-5678')" class="font-semibold text-blue-600 hover:underline block mt-0.5">
@@ -1275,6 +1283,7 @@ const loadMore = () => {
                 </a>
               </div>
 
+              <!-- Email -->
               <div class="bg-white p-2.5 rounded-xl border border-blue-100">
                 <span class="text-[10px] text-slate-400 font-bold block uppercase">Email</span>
                 <a :href="'mailto:' + (selectedItemDetail.reporterEmail || 'alex.r@university.edu')" class="font-semibold text-blue-600 hover:underline block mt-0.5 truncate">
@@ -1304,11 +1313,13 @@ const loadMore = () => {
                 </p>
               </div>
 
+              <!-- Current Badge -->
               <span :class="['px-2.5 py-1 rounded-lg text-xs border shadow-2xs', getStatusBadgeClass(selectedItemDetail.status, selectedItemDetail.type)]">
                 {{ getStatusLabel(selectedItemDetail) }}
               </span>
             </div>
 
+            <!-- Status Change Buttons -->
             <div class="flex items-center gap-2 flex-wrap pt-1">
               <template v-if="selectedItemDetail.type === 'LOST'">
                 <button
@@ -1386,7 +1397,7 @@ const loadMore = () => {
             <p class="text-xs text-slate-600 mt-0.5">Held at: {{ selectedItemDetail.securityPost || 'Main Security Booth' }}</p>
           </div>
 
-          <!-- CLAIM FORM -->
+          <!-- CLAIM FORM WITH INPUT VALIDATION -->
           <div class="border-t border-slate-100 pt-4">
             <div v-if="claimSent" class="bg-emerald-50 text-emerald-800 p-4 rounded-xl border border-emerald-200">
               <p class="text-xs font-bold">Claim Inquiry Sent!</p>
@@ -1396,6 +1407,7 @@ const loadMore = () => {
               <h3 class="text-xs font-bold text-slate-900 uppercase">Submit Claim Inquiry</h3>
 
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <!-- Claimer Name -->
                 <div>
                   <input
                     type="text"
@@ -1412,6 +1424,7 @@ const loadMore = () => {
                   </p>
                 </div>
 
+                <!-- Claimer Phone -->
                 <div>
                   <input
                     type="tel"
@@ -1428,6 +1441,7 @@ const loadMore = () => {
                   </p>
                 </div>
 
+                <!-- Claimer Email -->
                 <div>
                   <input
                     type="email"
@@ -1445,6 +1459,7 @@ const loadMore = () => {
                 </div>
               </div>
 
+              <!-- Claim Message -->
               <div>
                 <textarea
                   rows="3"
@@ -1476,7 +1491,7 @@ const loadMore = () => {
       </div>
     </div>
 
-    <!-- REPORT ITEM MODAL -->
+    <!-- REPORT ITEM MODAL (WITH CATEGORY FILTER & INPUT VALIDATIONS) -->
     <div v-if="isReportModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
       <div class="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 relative shadow-2xl">
         <div class="flex items-center justify-between pb-4 border-b border-slate-100">
@@ -1487,6 +1502,7 @@ const loadMore = () => {
           <button @click="isReportModalOpen = false" class="text-slate-400 hover:text-slate-600 font-bold">✕</button>
         </div>
 
+        <!-- Submit Error Summary Banner -->
         <div v-if="hasAttemptedReportSubmit && !isReportFormValid" class="mt-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-start gap-2 animate-fade-in">
           <svg class="w-4 h-4 text-rose-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -1498,6 +1514,7 @@ const loadMore = () => {
         </div>
 
         <form @submit.prevent="handleAddReport" class="mt-4 space-y-4">
+          <!-- Report Type -->
           <div>
             <label class="block text-xs font-bold text-slate-700 uppercase mb-1.5">Report Type *</label>
             <div class="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
@@ -1518,6 +1535,7 @@ const loadMore = () => {
             </div>
           </div>
 
+          <!-- Item Title with Validation -->
           <div>
             <div class="flex items-center justify-between mb-1">
               <label class="block text-xs font-bold text-slate-700 uppercase">Item Title *</label>
@@ -1541,6 +1559,7 @@ const loadMore = () => {
             </p>
           </div>
 
+          <!-- Category & Building -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Category *</label>
@@ -1561,6 +1580,7 @@ const loadMore = () => {
             </div>
           </div>
 
+          <!-- Faculty & Location -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Faculty *</label>
@@ -1595,6 +1615,7 @@ const loadMore = () => {
             </div>
           </div>
 
+          <!-- Description with Validation & Counter -->
           <div>
             <div class="flex items-center justify-between mb-1">
               <label class="block text-xs font-bold text-slate-700 uppercase">Item Description *</label>
@@ -1618,6 +1639,7 @@ const loadMore = () => {
             </p>
           </div>
 
+          <!-- PERSON CONTACT INFORMATION INPUTS WITH VALIDATION & AUTOFILL -->
           <div class="p-3.5 bg-blue-50/60 rounded-2xl border border-blue-100 space-y-3">
             <div class="flex items-center justify-between flex-wrap gap-2">
               <h3 class="text-xs font-extrabold text-blue-900 uppercase">
@@ -1632,6 +1654,7 @@ const loadMore = () => {
               </button>
             </div>
 
+            <!-- Reporter Name -->
             <div>
               <div class="flex items-center justify-between mb-1">
                 <label class="block text-[10px] font-bold text-slate-600 uppercase">Person Name *</label>
@@ -1656,6 +1679,7 @@ const loadMore = () => {
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <!-- Reporter Phone -->
               <div>
                 <div class="flex items-center justify-between mb-1">
                   <label class="block text-[10px] font-bold text-slate-600 uppercase">Phone Number *</label>
@@ -1679,6 +1703,7 @@ const loadMore = () => {
                 </p>
               </div>
 
+              <!-- Reporter Email -->
               <div>
                 <div class="flex items-center justify-between mb-1">
                   <label class="block text-[10px] font-bold text-slate-600 uppercase">Email Address *</label>
@@ -1704,9 +1729,11 @@ const loadMore = () => {
             </div>
           </div>
 
+          <!-- CATEGORY FILTER FOR PRESET IMAGES -->
           <div>
             <div class="flex items-center justify-between mb-1.5">
               <label class="block text-xs font-bold text-slate-700 uppercase">Select Image Preset</label>
+              <!-- Filter inside Report Item Modal -->
               <div class="flex items-center gap-1 text-[10px]">
                 <span class="text-slate-400 font-medium">Filter image by category:</span>
                 <select v-model="reportCategoryFilter" class="bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 font-bold text-slate-700 focus:outline-none">
@@ -1741,6 +1768,7 @@ const loadMore = () => {
             </div>
           </div>
 
+          <!-- Submit Button -->
           <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">
             <button
               type="button"
