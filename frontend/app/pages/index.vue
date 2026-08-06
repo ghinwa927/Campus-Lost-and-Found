@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, reactive } from 'vue';
-import type { CampusItem, ActiveTab, ItemStatus, ItemType } from '../src/types';
+import { ref, computed, reactive, onMounted, watch } from 'vue';
+import type { CampusItem, ActiveTab, ItemStatus, ItemType, CategoryItem } from '../src/types';
 import {
   INITIAL_ITEMS,
   INITIAL_CATEGORIES,
@@ -8,6 +8,9 @@ import {
   INITIAL_FACULTIES,
   INITIAL_TIMEFRAMES
 } from '../src/data/mockData';
+import { useLostFoundApi } from '../composables/useLostFoundApi';
+
+const api = useLostFoundApi();
 
 // Active Tab State (dashboard = Home Page)
 const activeTab = ref<ActiveTab>('dashboard');
@@ -25,31 +28,123 @@ const displayCount = ref(6);
 // Status Change Notification Toast
 const statusChangeMessage = ref<string | null>(null);
 
+type PersistedUiState = {
+  activeTab: ActiveTab;
+  itemStatuses: Record<string, ItemStatus>;
+  items: CampusItem[];
+};
+
+const STORAGE_KEY = 'lost-found-ui-state';
+const route = useRoute();
+const router = useRouter();
+
+const loadPersistedUiState = (): PersistedUiState | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<PersistedUiState>;
+    return {
+      activeTab: parsed.activeTab ?? 'dashboard',
+      itemStatuses: parsed.itemStatuses ?? {},
+      items: Array.isArray(parsed.items) ? parsed.items : [],
+    };
+  } catch (error) {
+    console.warn('Unable to restore UI state:', error);
+    return null;
+  }
+};
+
+const persistUiState = () => {
+  if (typeof window === 'undefined') return;
+
+  const payload: PersistedUiState = {
+    activeTab: activeTab.value,
+    itemStatuses: Object.fromEntries(items.value.map((item) => [item.backendId || item.id, item.status])),
+    items: items.value.map((item) => ({ ...item })),
+  };
+
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+};
+
+const applyPersistedStatuses = (sourceItems: CampusItem[]) => {
+  const persistedState = loadPersistedUiState();
+  const persistedItems = persistedState?.items ?? [];
+  const mergedItems = new Map<string, CampusItem>();
+
+  const recordItem = (item: CampusItem) => {
+    const key = item.backendId || item.id;
+    const existing = mergedItems.get(key);
+
+    if (!existing) {
+      mergedItems.set(key, { ...item });
+      return;
+    }
+
+    mergedItems.set(key, {
+      ...existing,
+      ...item,
+      status: item.status || existing.status,
+      backendId: existing.backendId || item.backendId,
+    });
+  };
+
+  sourceItems.forEach(recordItem);
+  persistedItems.forEach(recordItem);
+
+  return Array.from(mergedItems.values()).map((item) => {
+    const key = item.backendId || item.id;
+    const persistedStatus = persistedState?.itemStatuses?.[key];
+    return persistedStatus ? { ...item, status: persistedStatus } : item;
+  });
+};
+
+const normalizeStatus = (status: ItemStatus) => {
+  return status === 'RECONNECTED' ? 'RETURNED_TO_OWNER' : status;
+};
+
+const setActiveTab = (tab: ActiveTab) => {
+  activeTab.value = tab;
+
+  const nextQuery = { ...route.query };
+  if (tab === 'dashboard') {
+    delete nextQuery.tab;
+  } else {
+    nextQuery.tab = tab;
+  }
+
+  const currentTab = (route.query.tab as ActiveTab | undefined) ?? 'dashboard';
+  if (currentTab !== tab) {
+    router.replace({ query: nextQuery });
+  }
+};
+
 // Status Helper Functions
 const getStatusLabel = (item: CampusItem) => {
-  if (item.status === 'FOUND_BY_OWNER') {
+  const normalizedStatus = normalizeStatus(item.status);
+
+  if (normalizedStatus === 'FOUND_BY_OWNER') {
     return '✓ Found It! (Recovered)';
   }
-  if (item.status === 'RETURNED_TO_OWNER') {
+  if (normalizedStatus === 'RETURNED_TO_OWNER') {
     return '✓ Returned to Owner';
   }
-  if (item.status === 'RECONNECTED') {
-    return '✓ Reconnected';
-  }
-  if (item.status === 'IN_CLAIM') {
+  if (normalizedStatus === 'IN_CLAIM') {
     return 'In Claim Inquiry';
   }
   return item.type === 'LOST' ? 'Active (Still Missing)' : 'Active (At Security)';
 };
 
 const getStatusBadgeClass = (status: ItemStatus, type: ItemType) => {
-  switch (status) {
+  const normalizedStatus = normalizeStatus(status);
+
+  switch (normalizedStatus) {
     case 'FOUND_BY_OWNER':
       return 'bg-emerald-100 text-emerald-800 border-emerald-300 font-extrabold';
     case 'RETURNED_TO_OWNER':
       return 'bg-teal-100 text-teal-800 border-teal-300 font-extrabold';
-    case 'RECONNECTED':
-      return 'bg-indigo-100 text-indigo-800 border-indigo-300 font-extrabold';
     case 'IN_CLAIM':
       return 'bg-amber-100 text-amber-800 border-amber-300 font-bold';
     case 'ACTIVE':
@@ -60,21 +155,30 @@ const getStatusBadgeClass = (status: ItemStatus, type: ItemType) => {
   }
 };
 
-const updateItemStatus = (item: CampusItem, newStatus: ItemStatus) => {
-  item.status = newStatus;
+const updateItemStatus = async (item: CampusItem, newStatus: ItemStatus) => {
+  const effectiveStatus = normalizeStatus(newStatus);
+  item.status = effectiveStatus;
   if (selectedItemDetail.value && selectedItemDetail.value.id === item.id) {
-    selectedItemDetail.value.status = newStatus;
+    selectedItemDetail.value.status = effectiveStatus;
   }
 
+  persistUiState();
+
   let text = '';
-  if (newStatus === 'FOUND_BY_OWNER') {
+  if (effectiveStatus === 'FOUND_BY_OWNER') {
     text = `🎉 Status updated: "${item.title}" marked as Found It (Recovered by Owner)!`;
-  } else if (newStatus === 'RETURNED_TO_OWNER') {
+  } else if (effectiveStatus === 'RETURNED_TO_OWNER') {
     text = `🎁 Status updated: "${item.title}" marked as Returned to Owner!`;
-  } else if (newStatus === 'RECONNECTED') {
-    text = `🤝 Status updated: "${item.title}" marked as Reconnected!`;
-  } else if (newStatus === 'ACTIVE') {
+  } else if (effectiveStatus === 'ACTIVE') {
     text = `🔄 Status reset to Active for "${item.title}"`;
+  }
+
+  if (item.backendId) {
+    try {
+      await api.updateItemReportStatus(item.backendId, effectiveStatus === 'ACTIVE' ? 'active' : 'resolved');
+    } catch (error) {
+      console.warn('Could not sync status to backend, keeping the local UI change:', error);
+    }
   }
 
   statusChangeMessage.value = text;
@@ -91,7 +195,81 @@ const isReportModalOpen = ref(false);
 const showNotifications = ref(false);
 
 // Dataset State
-const items = ref<CampusItem[]>([...INITIAL_ITEMS]);
+const items = ref<CampusItem[]>([]);
+const availableCategories = ref<CategoryItem[]>([]);
+const isLoadingItems = ref(true);
+
+const loadItemsFromBackend = async () => {
+  isLoadingItems.value = true;
+
+  const persistedState = loadPersistedUiState();
+  const hasPersistedItems = (persistedState?.items?.length ?? 0) > 0;
+
+  try {
+    availableCategories.value = await api.fetchCategories();
+    const loadedItems = await api.fetchItems();
+    if (loadedItems.length) {
+  items.value = applyPersistedStatuses(loadedItems);
+} else {
+  items.value = [];
+}
+
+    persistUiState();
+  } catch (error) {
+    console.warn('Unable to load items from backend, restoring the last saved UI state:', error);
+    items.value = applyPersistedStatuses(hasPersistedItems ? (persistedState?.items ?? []) : []);
+    persistUiState();
+  } finally {
+    isLoadingItems.value = false;
+  }
+};
+
+onMounted(() => {
+  const persistedState = loadPersistedUiState();
+  const routeTab = route.query.tab;
+  const routeTabValue: ActiveTab = routeTab === 'my-items' || routeTab === 'settings' ? (routeTab as ActiveTab) : 'dashboard';
+  const restoredTab = persistedState?.activeTab && ['dashboard', 'my-items', 'settings'].includes(persistedState.activeTab)
+    ? persistedState.activeTab
+    : routeTabValue;
+
+  activeTab.value = restoredTab as ActiveTab;
+  if (activeTab.value !== routeTabValue) {
+    setActiveTab(activeTab.value);
+  }
+
+  items.value = applyPersistedStatuses(items.value);
+  loadItemsFromBackend();
+});
+
+watch(
+  () => route.query.tab,
+  (tab) => {
+    const nextTab: ActiveTab = tab === 'my-items' || tab === 'settings' ? (tab as ActiveTab) : 'dashboard';
+    if (activeTab.value !== nextTab) {
+      activeTab.value = nextTab;
+    }
+  },
+  { immediate: true }
+);
+
+watch(activeTab, (tab) => {
+  persistUiState();
+
+  if (tab === 'my-items') {
+    loadItemsFromBackend();
+  }
+
+  const nextQuery = { ...route.query };
+  if (tab === 'dashboard') {
+    delete nextQuery.tab;
+  } else {
+    nextQuery.tab = tab;
+  }
+
+  if ((route.query.tab ?? 'dashboard') !== tab) {
+    router.replace({ query: nextQuery });
+  }
+});
 
 // ==========================================
 // FORM VALIDATION & STATE: REPORT ITEM
@@ -261,7 +439,10 @@ const myItemsPerPage = 6;
 
 const myItemsList = computed(() => {
   return items.value.filter((item) => {
-    const isUserItem = item.id.startsWith('lost-') || item.id.startsWith('reported-') || item.reporterName === 'Alex Rivera';
+    const hasBackendIdentity = Boolean(item.backendId) || item.id.startsWith('reported-') || item.id.startsWith('lost-');
+    const hasReporterIdentity = Boolean(item.reporterName?.trim()) || Boolean(item.reporterEmail?.trim());
+    const isUserItem = hasBackendIdentity || hasReporterIdentity || item.reporterName === 'Alex Rivera';
+
     const matchesType = myItemsFilterType.value === 'ALL' || item.type === myItemsFilterType.value;
     const q = myItemsSearch.value.toLowerCase().trim();
     const matchesQuery =
@@ -379,11 +560,12 @@ const handleClaim = () => {
     claimSent.value = true;
     if (selectedItemDetail.value) {
       selectedItemDetail.value.status = 'IN_CLAIM';
+      persistUiState();
     }
   }, 600);
 };
 
-const handleAddReport = () => {
+const handleAddReport = async () => {
   hasAttemptedReportSubmit.value = true;
   reportTouched.title = true;
   reportTouched.location = true;
@@ -394,25 +576,53 @@ const handleAddReport = () => {
 
   if (!isReportFormValid.value) return;
 
-  const newItem: CampusItem = {
-    id: `reported-${Date.now()}`,
+  const fallbackCategory = availableCategories.value.find((category) => category.name.toUpperCase() === 'GENERAL')
+    || availableCategories.value.find((category) => category.name.toUpperCase() === 'ELECTRONICS')
+    || availableCategories.value[0];
+  const categoryId = availableCategories.value.find((category) => category.name.toUpperCase() === reportForm.category.toUpperCase())?.id
+    || fallbackCategory?.id
+    || '000000000000000000000000';
+
+  const newItemPayload = {
     title: reportForm.title.trim(),
-    type: reportType.value,
-    category: reportForm.category.toUpperCase(),
-    building: reportForm.building,
-    faculty: reportForm.faculty,
-    location: reportForm.location.trim(),
-    date: 'Just Now',
-    imageUrl: reportForm.imageUrl,
+    type: reportType.value.toLowerCase() as 'lost' | 'found',
+    categoryId,
     description: reportForm.description.trim(),
+    location: reportForm.location.trim(),
+    date: new Date().toISOString(),
+    imageUrl: reportForm.imageUrl,
     reporterName: reportForm.reporterName.trim(),
-    reporterPhone: reportForm.reporterPhone.trim(),
     reporterEmail: reportForm.reporterEmail.trim(),
-    status: 'ACTIVE',
-    securityPost: `${reportForm.building} Security Post`
   };
 
-  items.value.unshift(newItem);
+  try {
+    const createdItem = await api.createItemReport(newItemPayload, new Map(availableCategories.value.map((category) => [category.id, category.name])));
+    items.value = [createdItem, ...items.value.filter((item) => item.id !== createdItem.id)];
+    persistUiState();
+  } catch (error) {
+    console.warn('Backend create failed, saving locally:', error);
+    const fallbackItem: CampusItem = {
+      id: `reported-${Date.now()}`,
+      title: reportForm.title.trim(),
+      type: reportType.value,
+      category: reportForm.category.toUpperCase(),
+      building: reportForm.building,
+      faculty: reportForm.faculty,
+      location: reportForm.location.trim(),
+      date: 'Just Now',
+      imageUrl: reportForm.imageUrl,
+      description: reportForm.description.trim(),
+      reporterName: reportForm.reporterName.trim(),
+      reporterPhone: reportForm.reporterPhone.trim(),
+      reporterEmail: reportForm.reporterEmail.trim(),
+      status: 'ACTIVE',
+      securityPost: `${reportForm.building} Security Post`
+    };
+
+    items.value = [fallbackItem, ...items.value.filter((item) => item.id !== fallbackItem.id)];
+    persistUiState();
+  }
+
   isReportModalOpen.value = false;
 
   // Reset Report Form
@@ -431,8 +641,19 @@ const handleAddReport = () => {
   reportTouched.reporterEmail = false;
 };
 
-const deleteMyItem = (itemId: string) => {
+const deleteMyItem = async (itemId: string) => {
+  const itemToDelete = items.value.find((item) => item.id === itemId);
+
+  if (itemToDelete?.backendId) {
+    try {
+      await api.deleteItemReport(itemToDelete.backendId);
+    } catch (error) {
+      console.warn('Backend delete failed:', error);
+    }
+  }
+
   items.value = items.value.filter((i) => i.id !== itemId);
+  persistUiState();
 };
 
 const loadMore = () => {
@@ -467,7 +688,7 @@ const loadMore = () => {
             </svg>
           </button>
 
-          <div class="flex items-center gap-2.5 cursor-pointer" @click="activeTab = 'dashboard'; resetFilters()">
+          <div class="flex items-center gap-2.5 cursor-pointer" @click="setActiveTab('dashboard'); resetFilters()">
             <div class="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white shadow-xs">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -570,7 +791,7 @@ const loadMore = () => {
           <div class="space-y-1">
             <!-- Home Page Menu Item -->
             <button
-              @click="activeTab = 'dashboard'"
+              @click="setActiveTab('dashboard')"
               :class="[
                 'w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all',
                 activeTab === 'dashboard'
@@ -597,7 +818,7 @@ const loadMore = () => {
 
             <!-- Reported Items Link -->
             <button
-              @click="activeTab = 'my-items'; myItemsCurrentPage = 1"
+              @click="setActiveTab('my-items'); myItemsCurrentPage = 1"
               :class="[
                 'w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all',
                 activeTab === 'my-items'
@@ -636,9 +857,9 @@ const loadMore = () => {
               </button>
             </div>
             <nav class="space-y-1">
-              <button @click="activeTab = 'dashboard'; isOpenMobileSidebar = false" class="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg">Home Page</button>
+              <button @click="setActiveTab('dashboard'); isOpenMobileSidebar = false" class="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg">Home Page</button>
               <button @click="isReportModalOpen = true; isOpenMobileSidebar = false" class="w-full text-left px-3 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg">+ Report Item</button>
-              <button @click="activeTab = 'my-items'; isOpenMobileSidebar = false" class="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg">Reported Items</button>
+              <button @click="setActiveTab('my-items'); isOpenMobileSidebar = false" class="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg">Reported Items</button>
             </nav>
           </div>
         </div>
@@ -923,7 +1144,7 @@ const loadMore = () => {
 
                     <!-- Quick Status Toggle Button -->
                     <button
-                      v-if="item.type === 'LOST' && item.status !== 'FOUND_BY_OWNER'"
+                      v-if="item.type === 'LOST' && item.status === 'ACTIVE'"
                       @click="updateItemStatus(item, 'FOUND_BY_OWNER')"
                       title="Mark as Found It (Recovered by Owner)"
                       class="py-2 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1 shrink-0"
@@ -931,7 +1152,15 @@ const loadMore = () => {
                       <span>🎉 Found It!</span>
                     </button>
                     <button
-                      v-else-if="item.type === 'FOUND' && item.status !== 'RETURNED_TO_OWNER'"
+                      v-else-if="item.type === 'LOST' && item.status === 'FOUND_BY_OWNER'"
+                      @click="updateItemStatus(item, 'RECONNECTED')"
+                      title="Mark as Handed Back"
+                      class="py-2 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1 shrink-0"
+                    >
+                      <span>🎁 Handed Back</span>
+                    </button>
+                    <button
+                      v-else-if="item.type === 'FOUND' && item.status !== 'RETURNED_TO_OWNER' && item.status !== 'RECONNECTED'"
                       @click="updateItemStatus(item, 'RETURNED_TO_OWNER')"
                       title="Mark as Returned to Owner"
                       class="py-2 px-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1 shrink-0"
@@ -973,7 +1202,7 @@ const loadMore = () => {
             
             <div class="flex items-center gap-2 flex-wrap">
               <button
-                @click="activeTab = 'dashboard'"
+                @click="setActiveTab('dashboard')"
                 class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-colors border border-slate-200"
               >
                 <span>Explore All Items on Home Page</span>
@@ -1064,11 +1293,18 @@ const loadMore = () => {
                 <div class="mt-3 pt-2 border-t border-slate-100">
                   <template v-if="item.type === 'LOST'">
                     <button
-                      v-if="item.status !== 'FOUND_BY_OWNER'"
+                      v-if="item.status === 'ACTIVE'"
                       @click="updateItemStatus(item, 'FOUND_BY_OWNER')"
                       class="w-full py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1"
                     >
                       <span>🎉 I Found It! (Mark Recovered)</span>
+                    </button>
+                    <button
+                      v-else-if="item.status === 'FOUND_BY_OWNER'"
+                      @click="updateItemStatus(item, 'RETURNED_TO_OWNER')"
+                      class="w-full py-1.5 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1"
+                    >
+                      <span>🎁 Handed Back</span>
                     </button>
                     <button
                       v-else
@@ -1081,11 +1317,18 @@ const loadMore = () => {
 
                   <template v-else>
                     <button
-                      v-if="item.status !== 'RETURNED_TO_OWNER'"
+                      v-if="item.status !== 'RETURNED_TO_OWNER' && item.status !== 'RECONNECTED'"
                       @click="updateItemStatus(item, 'RETURNED_TO_OWNER')"
                       class="w-full py-1.5 px-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1"
                     >
                       <span>🎁 Mark "Returned to Owner"</span>
+                    </button>
+                    <button
+                      v-else-if="item.status === 'RETURNED_TO_OWNER'"
+                      @click="updateItemStatus(item, 'ACTIVE')"
+                      class="w-full py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-all border border-slate-200"
+                    >
+                      <span>🔄 Reset to Active at Security</span>
                     </button>
                     <button
                       v-else
@@ -1312,6 +1555,7 @@ const loadMore = () => {
             <div class="flex items-center gap-2 flex-wrap pt-1">
               <template v-if="selectedItemDetail.type === 'LOST'">
                 <button
+                  v-if="selectedItemDetail.status !== 'FOUND_BY_OWNER' && selectedItemDetail.status !== 'RECONNECTED'"
                   @click="updateItemStatus(selectedItemDetail, 'FOUND_BY_OWNER')"
                   :class="[
                     'px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer',
@@ -1324,19 +1568,20 @@ const loadMore = () => {
                 </button>
 
                 <button
-                  @click="updateItemStatus(selectedItemDetail, 'RECONNECTED')"
+                  v-else-if="selectedItemDetail.status === 'FOUND_BY_OWNER'"
+                  @click="updateItemStatus(selectedItemDetail, 'RETURNED_TO_OWNER')"
                   :class="[
                     'px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer',
-                    selectedItemDetail.status === 'RECONNECTED'
+                    selectedItemDetail.status === 'RETURNED_TO_OWNER'
                       ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
                       : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border-indigo-200'
                   ]"
                 >
-                  <span>🤝 Reconnected</span>
+                  <span>🎁 Handed Back</span>
                 </button>
 
                 <button
-                  v-if="selectedItemDetail.status !== 'ACTIVE'"
+                  v-if="selectedItemDetail.status !== 'ACTIVE' && selectedItemDetail.status !== 'FOUND_BY_OWNER'"
                   @click="updateItemStatus(selectedItemDetail, 'ACTIVE')"
                   class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold border border-slate-200 transition-colors cursor-pointer"
                 >
@@ -1346,6 +1591,7 @@ const loadMore = () => {
 
               <template v-else>
                 <button
+                  v-if="selectedItemDetail.status !== 'RETURNED_TO_OWNER' && selectedItemDetail.status !== 'RECONNECTED'"
                   @click="updateItemStatus(selectedItemDetail, 'RETURNED_TO_OWNER')"
                   :class="[
                     'px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer',
@@ -1358,19 +1604,15 @@ const loadMore = () => {
                 </button>
 
                 <button
-                  @click="updateItemStatus(selectedItemDetail, 'RECONNECTED')"
-                  :class="[
-                    'px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer',
-                    selectedItemDetail.status === 'RECONNECTED'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                      : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border-indigo-200'
-                  ]"
+                  v-else-if="selectedItemDetail.status === 'RETURNED_TO_OWNER'"
+                  @click="updateItemStatus(selectedItemDetail, 'ACTIVE')"
+                  class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold border border-slate-200 transition-colors cursor-pointer"
                 >
-                  <span>🤝 Reconnected</span>
+                  <span>🔄 Reset to Active at Security</span>
                 </button>
 
                 <button
-                  v-if="selectedItemDetail.status !== 'ACTIVE'"
+                  v-else
                   @click="updateItemStatus(selectedItemDetail, 'ACTIVE')"
                   class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold border border-slate-200 transition-colors cursor-pointer"
                 >

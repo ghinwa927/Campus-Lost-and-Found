@@ -17,6 +17,32 @@ export class ItemService {
     private readonly categoryRepository: CategoryRepository
   ) {}
 
+  private async resolveCategoryId(categoryId: string): Promise<ObjectId> {
+    if (ObjectId.isValid(categoryId)) {
+      const existingCategory = await this.categoryRepository.findById(
+        new ObjectId(categoryId)
+      );
+
+      if (existingCategory) {
+        return existingCategory._id as ObjectId;
+      }
+    }
+
+    const fallbackCategory = await this.categoryRepository.findBySlug("general");
+
+    if (fallbackCategory?._id) {
+      return fallbackCategory._id as ObjectId;
+    }
+
+    const createdCategory = await this.categoryRepository.create({
+      name: "General",
+      slug: "general",
+      icon: "📦",
+    });
+
+    return createdCategory._id as ObjectId;
+  }
+
   async getAllItems(query: ItemQuery = {}) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
@@ -54,14 +80,8 @@ export class ItemService {
   }
 
   async createItem(data: CreateItemInput) {
-    if (!ObjectId.isValid(data.categoryId)) {
-      throw new Error("Invalid category ID");
-    }
-
-    const category =
-      await this.categoryRepository.findById(
-        new ObjectId(data.categoryId)
-      );
+    const resolvedCategoryId = await this.resolveCategoryId(data.categoryId);
+    const category = await this.categoryRepository.findById(resolvedCategoryId);
 
     if (!category) {
       throw new Error("Category not found");
@@ -72,7 +92,7 @@ export class ItemService {
     const item: Item = {
       title: data.title,
       type: data.type,
-      categoryId: new ObjectId(data.categoryId),
+      categoryId: resolvedCategoryId,
       description: data.description,
       location: data.location,
       date: new Date(data.date),
@@ -126,21 +146,14 @@ export class ItemService {
     }
 
     if (data.categoryId !== undefined) {
-      if (!ObjectId.isValid(data.categoryId)) {
-        throw new Error("Invalid category ID");
-      }
-
-      const category =
-        await this.categoryRepository.findById(
-          new ObjectId(data.categoryId)
-        );
+      const resolvedCategoryId = await this.resolveCategoryId(data.categoryId);
+      const category = await this.categoryRepository.findById(resolvedCategoryId);
 
       if (!category) {
         throw new Error("Category not found");
       }
 
-      updateData.categoryId =
-        new ObjectId(data.categoryId);
+      updateData.categoryId = resolvedCategoryId;
     }
 
     return this.itemRepository.update(

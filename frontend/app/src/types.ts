@@ -3,6 +3,7 @@ export type ItemStatus = 'ACTIVE' | 'IN_CLAIM' | 'FOUND_BY_OWNER' | 'RETURNED_TO
 
 export interface CampusItem {
   id: string;
+  backendId?: string;
   title: string;
   type: ItemType;
   category: string; // e.g. 'ELECTRONICS', 'BAGS', 'PERSONAL ITEMS', 'BOOKS', 'KEYS', 'PHONE', 'LAPTOP'
