@@ -5,7 +5,7 @@ export interface CampusItem {
   id: string;
   title: string;
   type: ItemType;
-  category: string; // e.g. 'ELECTRONICS', 'BAGS', 'PERSONAL ITEMS', 'BOOKS', 'KEYS', 'PHONE', 'LAPTOP'
+  category: string;
   building: string;
   faculty: string;
   location: string;
@@ -26,12 +26,4 @@ export interface CategoryItem {
   icon: string;
 }
 
-export type ActiveTab = 'dashboard' | 'report' | 'my-items' | 'settings';
-
-// Runtime export stubs to satisfy runtime module resolution in SSR/bundlers
-export const CampusItem = {};
-export const CategoryItem = {};
-export const ActiveTab = {};
-export const ItemStatus = {};
-export const ItemType = {};
-
+export type ActiveTab = 'dashboard' | 'report' | 'my-items';
