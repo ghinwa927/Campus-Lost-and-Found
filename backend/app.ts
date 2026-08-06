@@ -7,6 +7,7 @@ import mongodbPlugin from "./plugins/mongodb.js";
 
 import categoryRoutes from "./routes/category.routes.js";
 import itemRoutes from "./routes/item.routes.js";
+import { uploadRoutes } from "./routes/upload.routes.js";
 
 import { errorHandler } from "./middleware/error-handler.js";
 
@@ -40,6 +41,10 @@ export function buildApp() {
   app.register(itemRoutes, {
     prefix: "/api/items",
   });
+
+  app.register(uploadRoutes, {
+  prefix: "/api/upload",
+});
 
   return app;
 }

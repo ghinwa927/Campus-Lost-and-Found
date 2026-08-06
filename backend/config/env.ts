@@ -3,6 +3,9 @@ export interface Env {
   HOST: string;
   MONGODB_URI: string;
   MONGODB_DB_NAME: string;
+  IMAGEKIT_PUBLIC_KEY: string;
+  IMAGEKIT_PRIVATE_KEY: string;
+  IMAGEKIT_URL_ENDPOINT: string;
 }
 
 export const envSchema = {
@@ -12,6 +15,9 @@ export const envSchema = {
     "HOST",
     "MONGODB_URI",
     "MONGODB_DB_NAME",
+    "IMAGEKIT_PUBLIC_KEY",
+    "IMAGEKIT_PRIVATE_KEY",
+    "IMAGEKIT_URL_ENDPOINT",
   ],
   properties: {
     PORT: {
@@ -26,6 +32,17 @@ export const envSchema = {
       type: "string",
     },
     MONGODB_DB_NAME: {
+      type: "string",
+    },
+    IMAGEKIT_PUBLIC_KEY: {
+      type: "string",
+    },
+
+    IMAGEKIT_PRIVATE_KEY: {
+      type: "string",
+    },
+
+    IMAGEKIT_URL_ENDPOINT: {
       type: "string",
     },
   },
